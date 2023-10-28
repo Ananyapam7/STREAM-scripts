@@ -1,7 +1,7 @@
 clear all , close all, clc, close all hidden
 import C:\idddp\START_ML\Old_start\gradients.*
 % Define a starting folder.
-topLevelFolder = "/home/ananyapam/Projects/STREAM/data/START_sample_data_xls";
+topLevelFolder = "/home/ananyapam/Projects/STREAM/data/START_sample_data";
 fig_saving_folder = 'C:\idddp\START_ML\Old_start\START_India_data_analysis_sharing\Motor_following_task\figures';
 output_folder = 'C:\idddp\START_ML\Old_start\START_India_data_analysis_sharing\Motor_following_task\output';
 cd(topLevelFolder)
@@ -24,7 +24,7 @@ listOfFolderNames = {filelist.name};
 numberOfFolders = length(listOfFolderNames);
 
 %% find group infor
-%%clin_data = xlsread('C:\idddp\START_ML\Old_start\Clinical_data_new1.xlsx');
+clin_data = xlsread('C:\idddp\START_ML\Old_start\Clinical_data_new1.xlsx');
 All_ppt_rmse = [];
 rmse_mn= [];
 
@@ -41,7 +41,7 @@ for kk = 1 : numberOfFolders
     %% now do my bit
     cd(thisFolderPath)
     % get the data file
-    %filePattern1 = sprintf('%s/*.xls', thisFolder);
+    %filePattern1 = sprintf('%s/*.xlsx', thisFolder);
     xlFileNames = dir(thisFolderPath);
     xlFileNames(1:2) = []
     xlFileNames={xlFileNames.name};
@@ -56,9 +56,8 @@ for kk = 1 : numberOfFolders
         clear filename1 nunbers txt
         filename1 = char(xlFileNames)
         %% find the last attempt made by the child
-        %%[~, sheets] = xlsfinfo(filename1);
-        %%st =char(sheets(1,end));
-        st = 1
+        [~, sheets] = xlsfinfo(filename1);
+        st =char(sheets(1,end));
         [beedata, txt, everything] = xlsread(filename1,st); %% read xsl file
         %% match the ids of the children
         id = thisFolder; %get backend ID
@@ -69,14 +68,14 @@ for kk = 1 : numberOfFolders
         ppt(kk,1) = childID;
         
         %% match the clinical data
-        %for pp = 1:length(clin_data)
-        %    if ppt(kk,1)  == clin_data(pp,1)
-        %        clinical_data(kk,1:25) = clin_data(pp,1:25);%% 3=diagnosis, 4=vsms, 15=DQ, 19=cog_age, 22=INDT, 23=age, 24=gender, 25=diagnosis with ID_ASD as 4
-        %        break
-        %    else
-        %        clinical_data(kk,1:25) = nan(1,25);
-        %    end
-        %end
+        for pp = 1:length(clin_data)
+            if ppt(kk,1)  == clin_data(pp,1)
+                clinical_data(kk,1:25) = clin_data(pp,1:25);%% 3=diagnosis, 4=vsms, 15=DQ, 19=cog_age, 22=INDT, 23=age, 24=gender, 25=diagnosis with ID_ASD as 4
+                break
+            else
+                clinical_data(kk,1:25) = nan(1,25);
+            end
+        end
         
         %% is it a bad data
         for pp = 1:length(bad_data)
@@ -87,7 +86,7 @@ for kk = 1 : numberOfFolders
                 invalid_data(kk,1) = 0;
             end
         end
-        disp(beedata)
+        
         %% adjust the number data to match same rows as text data
             add_n = zeros(12,14);
             mvmnts = [add_n;beedata];

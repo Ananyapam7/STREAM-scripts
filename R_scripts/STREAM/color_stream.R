@@ -12,11 +12,10 @@ rm(list=ls())
 
 # Create directory to save all processed files
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
-dir.create(file.path(getwd(), "ColoringTask/Datasets-processed/"), showWarnings = FALSE, recursive = T)
-dir.create(file.path(getwd(), "ColoringTask/Images-processed/"), showWarnings = FALSE, recursive = T)
-dir.create(file.path(getwd(), "ColoringTask/Processed/"), showWarnings = FALSE, recursive = T)
 
-topLevelFolder <- "/home/ananyapam/Projects/STREAM/data/START_sample_data"
+source("organize_files.R")
+
+topLevelFolder <- "/home/ananyapam/Projects/STREAM/data/STREAM_sample_data"
 
 listOfFolderNames <- list.files(path=topLevelFolder, full.names = TRUE)
 numberOfFolders <- length(listOfFolderNames)

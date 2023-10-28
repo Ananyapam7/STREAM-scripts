@@ -3,40 +3,18 @@
 rm(list=ls())
 
 # Check which packages are installed, install the missing ones, and activate all
-packagelist <- c('readxl', 'zoo', 'dplyr', 'purrr', 'stringr', 'rjson', 'jsonlite')
+packagelist <- c('readxl', 'zoo', 'dplyr', 'purrr', 'stringr', 'pracma')
 missingpackages <- packagelist[!packagelist %in% installed.packages()[,1]]
 if (length(missingpackages)>0){install.packages(missingpackages)}
 toinstall <- packagelist[which(!packagelist %in% (.packages()))]
 invisible(lapply(toinstall,library,character.only=T))
 rm(list=ls())
 
-compute_derivatives <- function(x, t) {
-  if (length(x) != length(t)) {
-    stop("x and t must have the same length")
-  }
-  
-  # Ensure t is in increasing order
-  if (any(diff(t) <= 0)) {
-    stop("t must be in strictly increasing order")
-  }
-  
-  # Compute derivatives using finite differences
-  speed <- c(0, diff(x) / diff(t))
-  acceleration <- c(0, diff(speed) / diff(t)[-length(t)])
-  jerk <- c(0, diff(acceleration) / diff(t)[-length(t)][-length(t)])
-  
-  # Pad 0 values to make vectors of the same length
-  acceleration <- c(0, acceleration, 0)
-  jerk <- c(0, jerk, 0, 0)
-  
-  list(speed = speed, acceleration = acceleration, jerk = jerk)
-}
-
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
-dir.create(file.path(getwd(), "MotorTask/Datasets-processed/"), showWarnings = FALSE, recursive = T)
-dir.create(file.path(getwd(), "MotorTask/Processed/"), showWarnings = FALSE, recursive = T)
 
-topLevelFolder <- "/home/ananyapam/Projects/STREAM/data/START_sample_data"
+source("organize_files.R")
+
+topLevelFolder <- "/home/ananyapam/Projects/STREAM/data/STREAM_sample_data"
 
 listOfFolderNames <- list.files(path=topLevelFolder, full.names = TRUE)
 numberOfFolders <- length(listOfFolderNames)
@@ -110,6 +88,44 @@ parse_excel <- function(filepath, sheetname) {
   return(list(metadata = metadata_list, data_block = data_block, sub_attempt_data = sub_attempt_data))
 }
 
+gradients <- function(x, y, t) {
+  gradx1 <- pracma::gradient(x, t)
+  grady1 <- pracma::gradient(y, t)
+  
+  gradx2 <- pracma::gradient(gradx1, t)
+  grady2 <- pracma::gradient(grady1, t)
+  
+  gradx3 <- pracma::gradient(gradx2, t)
+  grady3 <- pracma::gradient(grady2, t)
+  
+  grad1 <- sqrt(gradx1^2 + grady1^2)
+  grad2 <- sqrt(gradx2^2 + grady2^2)
+  grad3 <- sqrt(gradx3^2 + grady3^2)
+  
+  list(grad1 = grad1, grad2 = grad2, grad3 = grad3)
+}
+
+# Function to extract data from sheets representing the last attempt
+parse_last_attempt_sheet <- function(filepath) {
+  # Get all sheet names
+  sheet_names <- excel_sheets(filepath)
+  
+  # Extract attempt numbers from the sheet names
+  attempt_numbers <- str_extract(sheet_names, "(?<=Attempt #)\\d+") %>% as.numeric()
+  
+  # Identify the maximum attempt number
+  max_attempt <- max(attempt_numbers, na.rm = TRUE)
+  
+  # Filter sheet names that match the maximum attempt number
+  last_attempt_sheets <- sheet_names[attempt_numbers == max_attempt]
+  
+  # Extract data only from these sheets using the parse_excel_bubble function
+  last_attempt_data <- map(last_attempt_sheets, ~parse_excel(filepath, .x))
+  
+  # Return the data as a named list where names are the last attempt sheet names
+  return(setNames(last_attempt_data, last_attempt_sheets))
+}
+
 parse_last_uninterrupted_sheet <- function(filepath){
   # Get all sheet names
   sheet_names <- excel_sheets(filepath)
@@ -167,39 +183,112 @@ process_motor_task <- function(filepath){
   speed_subattempt <- rep(NA, sub_attempts)
   acceleration_subattempt <- rep(NA, sub_attempts)
   jerk_subattempt <- rep(NA, sub_attempts)
-  
+
   for(attempt_index in 1:sub_attempts){
     attempt_data <- data[[attempt_index]]
     first_touch_index <- which(attempt_data$touch_pressure != 0)[1]
     attempt_data <- attempt_data[first_touch_index:nrow(attempt_data), ]
     
-    # Average the data over unique timestamps
-    averaged_data <- attempt_data %>%
-      select(time, touch_x, touch_y, bee_x, bee_y, time) %>%
-      mutate(across(everything(), as.numeric)) %>%
-      group_by(time) %>%
-      summarise(touch_x = mean(touch_x), touch_y = mean(touch_y), bee_x = mean(bee_x), bee_y = mean(bee_y))
-    
-    # Set the time from t=0
-    averaged_data$time <- averaged_data$time - averaged_data$time[1]
-    
-    # Interpolate the time and set the start from t=0
-    interpolated_time <- seq(from = (averaged_data$time)[1], to = (averaged_data$time)[length(averaged_data$time)], length.out = length(averaged_data$time))
-    interpolated_time <- interpolated_time - interpolated_time[1]
-    
-    interpolated_touch_x <- c(scale(approx(averaged_data$time, averaged_data$touch_x, xout = interpolated_time)$y, scale = FALSE))
-    interpolated_touch_y <- c(scale(approx(averaged_data$time, averaged_data$touch_y, xout = interpolated_time)$y, scale = FALSE))
-    
-    interpolated_bee_x <- c(scale(approx(averaged_data$time, averaged_data$bee_x, xout = interpolated_time)$y, scale = FALSE))
-    interpolated_bee_y <- c(scale(approx(averaged_data$time, averaged_data$bee_y, xout = interpolated_time)$y, scale = FALSE))
-    
-    ## Do changes here
-    write.csv(interpolated_bee_x, "inter_beex.csv")
-    write.csv(interpolated_bee_y, "inter_beey.csv")
-    write.csv(interpolated_touch_x, "inter_touchx.csv")
-    write.csv(interpolated_touch_y, "inter_touchy.csv")
-    write.csv(interpolated_time, "inter_time.csv")
+    if ((sum(attempt_data$touch_x != 0) < 5) || (sum(attempt_data$touch_y != 0) < 5)) {
+      warning("Very few touch points\n")
+      rmse <- NA
+      weighted_x_freq_gain <- NA
+      weighted_y_freq_gain <- NA
+      speed <- NA
+      acceleration <- NA
+      jerk <- NA
+      interrupted <- NA
+    } else{
+      # Average the data over unique timestamps
+      averaged_data <- attempt_data %>%
+        select(time, touch_x, touch_y, bee_x, bee_y, time) %>%
+        mutate(across(everything(), as.numeric)) %>%
+        group_by(time) %>%
+        summarise(touch_x = mean(touch_x), touch_y = mean(touch_y), bee_x = mean(bee_x), bee_y = mean(bee_y))
+      
+      # Set the time from t=0
+      averaged_data$time <- averaged_data$time - averaged_data$time[1]
+      
+      # Interpolate the time and set the start from t=0
+      interpolated_time <- seq(from = (averaged_data$time)[1], to = (averaged_data$time)[length(averaged_data$time)], length.out = length(averaged_data$time))
+      interpolated_time <- interpolated_time - interpolated_time[1]
+      
+      interpolated_touch_x <- c(scale(approx(averaged_data$time, averaged_data$touch_x, xout = interpolated_time)$y, scale = FALSE))
+      interpolated_touch_y <- c(scale(approx(averaged_data$time, averaged_data$touch_y, xout = interpolated_time)$y, scale = FALSE))
+      
+      interpolated_bee_x <- c(scale(approx(averaged_data$time, averaged_data$bee_x, xout = interpolated_time)$y, scale = FALSE))
+      interpolated_bee_y <- c(scale(approx(averaged_data$time, averaged_data$bee_y, xout = interpolated_time)$y, scale = FALSE))
+      
+      fft_touch_x <- fft(interpolated_touch_x)
+      fft_touch_y <- fft(interpolated_touch_y)
+      fft_bee_x <- fft(interpolated_bee_x)
+      fft_bee_y <- fft(interpolated_bee_y)
+      
+      # Consider only one half of the FFT spectrum
+      num_samples <- length(interpolated_time)
+      
+      abs_fft_touch_x <- abs(fft_touch_x/num_samples)[1:ceiling(num_samples/2)]
+      abs_fft_touch_y <- abs(fft_touch_y/num_samples)[1:ceiling(num_samples/2)]
+      abs_fft_bee_x <- abs(fft_bee_x/num_samples)[1:ceiling(num_samples/2)]
+      abs_fft_bee_y <- abs(fft_bee_y/num_samples)[1:ceiling(num_samples/2)]
+      
+      abs_fft_touch_x <- 2 * abs_fft_touch_x[2:(length(abs_fft_touch_x)-1)]
+      abs_fft_touch_y <- 2 * abs_fft_touch_y[2:(length(abs_fft_touch_y)-1)]
+      abs_fft_bee_x <- 2 * abs_fft_bee_x[2:(length(abs_fft_bee_x)-1)]
+      abs_fft_bee_y <- 2 * abs_fft_bee_y[2:(length(abs_fft_bee_y)-1)]
+      
+      ########################################################################
+      # Using rollapply to compute the moving average
+      avg_amp_touch_x <- rollapply(abs_fft_touch_x, width = 3, FUN = mean, align = "center", partial = TRUE)
+      avg_amp_touch_y <- rollapply(abs_fft_touch_y, width = 3, FUN = mean, align = "center", partial = TRUE)
+      
+      x_freq_gain_vector <- avg_amp_touch_x/abs_fft_bee_x
+      y_freq_gain_vector <- avg_amp_touch_y/abs_fft_bee_y
+      
+      x_freq_gain_final <- mean(x_freq_gain_vector)
+      y_freq_gain_final <- mean(y_freq_gain_vector)
+      
+      weighted_x_freq_gain <- sum(abs_fft_touch_x * x_freq_gain_vector) / sum(abs_fft_touch_x)
+      weighted_y_freq_gain <- sum(abs_fft_touch_y * y_freq_gain_vector) / sum(abs_fft_touch_y)
+      
+      # Combine data into a single data frame
+      combined_data <- averaged_data %>%
+        filter(touch_x != 0) %>% 
+        select(touch_x, touch_y, bee_x, bee_y)
+      
+      # Calculate the difference between the actual and estimated values
+      difference <- c(combined_data$bee_x - combined_data$touch_x, 
+                      combined_data$bee_y - combined_data$touch_y)
+      
+      # Calculate RMSE
+      rmse <- sqrt(mean(difference^2))
+      grads <- gradients(averaged_data$touch_x, averaged_data$touch_y, averaged_data$time)
+      speed <- mean(grads$grad1)
+      acceleration <- mean(grads$grad2)
+      jerk <- mean(grads$grad3)
+    }
+    rmse_subattempt[attempt_index] <- rmse
+    weighted_x_freq_gain_subattempt[attempt_index] <- weighted_x_freq_gain
+    weighted_y_freq_gain_subattempt[attempt_index] <- weighted_y_freq_gain
+    speed_subattempt[attempt_index] <- speed
+    acceleration_subattempt[attempt_index] <- acceleration
+    jerk_subattempt[attempt_index] <- jerk
   }
+  
+  rmse <- mean(rmse_subattempt)
+  weighted_x_freq_gain <- mean(weighted_x_freq_gain_subattempt)
+  weighted_y_freq_gain <- mean(weighted_y_freq_gain_subattempt)
+  speed <- mean(speed_subattempt)
+  acceleration <- mean(acceleration_subattempt)
+  jerk <- mean(jerk_subattempt)
+  
+  return(c(rmse,
+           weighted_x_freq_gain,
+           weighted_y_freq_gain,
+           speed,
+           acceleration,
+           jerk,
+           interrupted))
 }
 
 for (num_folder in 1:numberOfFolders) {
@@ -212,7 +301,14 @@ for (num_folder in 1:numberOfFolders) {
     if (length(xlFileNames) > 0) {
       print(sprintf('Processing file %s',num_folder))
       ########################## Data Extraction #################################
-      process_motor_task(xlFileNames)
+      motor_results <- process_motor_task(xlFileNames)
+      rmse[num_folder] <- motor_results[1]
+      weighted_x_freq_gain[num_folder] <- motor_results[2]
+      weighted_y_freq_gain[num_folder] <- motor_results[3]
+      speed[num_folder] <- motor_results[4]
+      acceleration[num_folder] <- motor_results[5]
+      jerk[num_folder] <- motor_results[6]
+      interrupted[num_folder] <- motor_results[7]
       ############################################################################
     }
     else {

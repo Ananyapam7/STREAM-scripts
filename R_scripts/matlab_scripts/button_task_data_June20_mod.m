@@ -1,7 +1,7 @@
 clear all , close all, clc, close all hidden
-topLevelFolder = "/home/ananyapam/Projects/STREAM/data/START_sample_data";
-fig_saving_folder = '/home/ananyapam/Projects/STREAM/data/figures';
-output_folder = '/home/ananyapam/Projects/STREAM/data/Button_choice_task/output';
+topLevelFolder = "C:\idddp\START_ML\START_india_data_folders";
+fig_saving_folder = 'C:\idddp\START_ML\Old_start\START_India_data_analysis_sharing\Button_choice_task\figures';
+output_folder = 'C:\idddp\START_ML\Old_start\START_India_data_analysis_sharing\Button_choice_task\output';
 cd(topLevelFolder)
 count = 0;
 folders = [];
@@ -29,7 +29,7 @@ end
 numberOfFolders = length(listOfFolderNames);
 
 %% find group infor
-clin_data = readtable('/home/ananyapam/Projects/STREAM/data/Clinical_data_new1.xls');
+clin_data = xlsread('C:\idddp\START_ML\Old_start\Clinical_data_new1.xlsx');
 
 %% list of bad data from the observation at the time of testing
 bad_data = [489,497,548,570,571,573,582,714,724,725,730,734,737]';
@@ -40,7 +40,7 @@ for kk = 1 : numberOfFolders
     thisFolderPath = fullfile(topLevelFolder,thisFolder);        
     %% now do my bit
     cd(thisFolderPath)
-    filePattern1 = sprintf('%s/*.xls', thisFolderPath);
+    filePattern1 = sprintf('%s/*.xlsx', thisFolderPath);
     xlFileNames = dir(filePattern1);
     xlFileNames={xlFileNames.name};
     ix=regexp(xlFileNames,'choose_touching');
@@ -57,9 +57,7 @@ for kk = 1 : numberOfFolders
         clear numbers 
         [~, sheets] = xlsfinfo(filename1);
         st =char(sheets(1,end));
-        disp(st)
         [numbers, txt, everything] = xlsread(filename1,st); %% read xsl file
-        %% disp(txt)
         h_values = txt(:,8);
         tf = contains(h_values,"silent");
         rf = contains(h_values,"social");
@@ -83,6 +81,16 @@ for kk = 1 : numberOfFolders
        %% get the id
         id = thisFolder; %get backend ID
         ppt(kk,1) = childID;
+
+        %% match the clinical data
+        for pp = 1:length(clin_data)
+            if ppt(kk,1)  == clin_data(pp,1)
+                clinical_data(kk,1:25) = clin_data(pp,1:25);%% 3=diagnosis, 4=vsms, 15=DQ, 19=cog_age, 22=INDT, 23=age, 24=gender, 25=diagnosis with ID_ASD as 4
+                break
+            else
+                clinical_data(kk,1:25) = nan(1,25);
+            end
+        end
 
         %% is it a bad data
         for pp = 1:length(bad_data)
@@ -151,7 +159,7 @@ end
 %% put the data together
 cd(output_folder)
 Soc_prop= social./trials;%% convert social choice into proportion
-All_button_data = [ppt, social, non_social, interrupt, trials, Soc_prop, clin_data, invalid_data];
+All_button_data = [ppt, social, non_social, interrupt, trials, Soc_prop, clinical_data, invalid_data];
 histcounts(All_button_data(:,9))
 
 %% remove any junk data

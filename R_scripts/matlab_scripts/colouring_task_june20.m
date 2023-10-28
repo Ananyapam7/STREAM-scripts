@@ -24,7 +24,7 @@ end
 numberOfFolders = length(listOfFolderNames);
 
 %% find group infor
-clin_data = xlsread('C:\idddp\START_ML\Old_start\Clinical_data_new1.xls');
+clin_data = xlsread('C:\idddp\START_ML\Old_start\Clinical_data_new1.xlsx');
 
 %% list of bad data from the observation at the time of testing
 bad_data = [479,544,571,572,580,582,655,656,668,704,708]';
@@ -42,7 +42,7 @@ for k = 1: numberOfFolders
     %% now do my bit
     cd(thisFolderPath)
     % get colouring data file
-    filePattern1 = sprintf('%s/*.xls', thisFolderPath);
+    filePattern1 = sprintf('%s/*.xlsx', thisFolderPath);
     xlFileNames = dir(filePattern1);
     xlFileNames={xlFileNames.name};
     ix=regexp(xlFileNames,'coloring');
@@ -176,7 +176,6 @@ for k = 1: numberOfFolders
                 t1 = t(crossover~=0);
                 t21 = unique(t1);
                 crossover1(aa) = numel(t21); 
-                
                 cross_time = mvmnts(t21,5);
                 dur = diff(cross_time);
                 cross_dur(aa) = sum(dur);

@@ -29,7 +29,7 @@ gradients <- function(x, y, t) {
 
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
-topLevelFolder <- "/home/ananyapam/Projects/STREAM/data/START_sample_data"
+topLevelFolder <- "/home/ananyapam/Projects/STREAM-scripts/data/START_sample_data"
 
 listOfFolderNames <- list.files(path=topLevelFolder, full.names = TRUE)
 numberOfFolders <- length(listOfFolderNames)
