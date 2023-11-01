@@ -3,7 +3,7 @@
 rm(list=ls())
 
 # Check which packages are installed, install the missing ones, and activate all
-packagelist <- c('readxl', 'dplyr', 'purrr', 'stringr', 'magick', 'sp', 'rjson', 'jsonlite', 'lubridate') # sudo apt-get install libmagick++-dev
+packagelist <- c('readxl', 'dplyr', 'purrr', 'stringr', 'magick', 'sp', 'lubridate') # sudo apt-get install libmagick++-dev
 missingpackages <- packagelist[!packagelist %in% installed.packages()[,1]]
 if (length(missingpackages)>0){install.packages(missingpackages)}
 toinstall <- packagelist[which(!packagelist %in% (.packages()))]
@@ -13,9 +13,7 @@ rm(list=ls())
 # Create directory to save all processed files
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
-source("organize_files.R")
-
-topLevelFolder <- "/home/ananyapam/Projects/STREAM/data/STREAM_sample_data"
+topLevelFolder <- "/home/ananyapam/Projects/STREAM-scripts/data/STREAM_sample_data"
 
 listOfFolderNames <- list.files(path=topLevelFolder, full.names = TRUE)
 numberOfFolders <- length(listOfFolderNames)
@@ -287,23 +285,15 @@ find_last_uninterrupted_attempt <- function(data_list) {
 }
 
 compute_time_diff <- function(endTime, startTime) {
+  # Provided times
+  start_time <- as.POSIXct(endTime, format="%d/%m/%Y %H:%M:%OS")
+  end_time <- as.POSIXct(startTime, format="%d/%m/%Y %H:%M:%OS")
   
-  # Splitting date-time and milliseconds
-  end_time_parts <- strsplit(endTime, " ")[[1]]
-  start_time_parts <- strsplit(startTime, " ")[[1]]
+  # Calculate time difference
+  time_difference <- difftime(end_time, start_time, units="secs")
   
-  # Parsing date-time
-  end_datetime <- dmy_hms(paste(end_time_parts[1:2], collapse = " "))
-  start_datetime <- dmy_hms(paste(start_time_parts[1:2], collapse = " "))
-  
-  # Computing the difference in milli-seconds
-  time_diff_ms <- as.numeric(difftime(end_datetime, start_datetime, units = "secs"))*1000
-  
-  # Adjusting for milliseconds difference
-  ms_diff <- as.numeric(end_time_parts[3]) - as.numeric(start_time_parts[3])
-  total_diff_secs <- time_diff_ms + ms_diff
-  
-  return(total_diff_secs/1000)
+  # Print result
+  return (time_difference)
 }
 
 process_color_data_task <- function(filepath, imagefilepaths){
@@ -329,7 +319,7 @@ process_color_data_task <- function(filepath, imagefilepaths){
   num_sub_attempts <- length(data)
   interrupted <- metadata$interrupted
   time_taken <- compute_time_diff(metadata$endTime, metadata$startTime)
-  
+  print(time_taken)
   inside_points_attempts <- numeric(num_sub_attempts)
   outside_points_attempts <- numeric(num_sub_attempts)
   crossover_counts_attempts <- numeric(num_sub_attempts)
@@ -417,9 +407,10 @@ process_color_data_task <- function(filepath, imagefilepaths){
 for (num_folder in 1:numberOfFolders) {
   tryCatch({
     thisFolder <- listOfFolderNames[num_folder]
-    xlFileNames <- list.files(path = thisFolder, pattern="coloring.*\\.xlsx$", full.names=TRUE)
-    child_ids[num_folder] <- as.numeric(gsub("^.*child_(\\d+).*", "\\1", thisFolder))
-    imgFileNames <- list.files(path = thisFolder, pattern = "coloring.*\\.(jpg|png|gif|bmp|tiff)$", full.names = TRUE)
+    # New naming is colouring
+    xlFileNames <- list.files(path = thisFolder, pattern="colouring.*\\.xlsx$", full.names=TRUE)
+    child_ids[num_folder] <- str_extract(thisFolder, "(?<=child_id_).+")
+    imgFileNames <- list.files(path = thisFolder, pattern = "colouring.*\\.(jpg|png|gif|bmp|tiff)$", full.names = TRUE)
     xlFiles_processed <- c(xlFiles_processed, xlFileNames)
     imageFiles_processed <- c(imageFiles_processed, imgFileNames)
     if (length(xlFileNames) > 0 && length(imgFileNames) > 0) {
@@ -443,9 +434,6 @@ for (num_folder in 1:numberOfFolders) {
     message(paste0("Warning in folder ", num_folder, ": ", w))
   })
 }
-
-file.copy(from = xlFiles_processed, to = file.path(getwd(), "ColoringTask/Datasets-processed/", basename(xlFiles_processed)))
-file.copy(from = imageFiles_processed, to = file.path(getwd(), "ColoringTask/Images-processed/", basename(imageFiles_processed)))
 
 color_task_data <- data.frame(
   child_ids, 

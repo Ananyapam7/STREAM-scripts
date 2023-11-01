@@ -12,9 +12,7 @@ rm(list=ls())
 
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
-source("organize_files.R")
-
-topLevelFolder <- "/home/ananyapam/Projects/STREAM/data/STREAM_sample_data"
+topLevelFolder <- "/home/ananyapam/Projects/STREAM-scripts/data/STREAM_sample_data"
 
 listOfFolderNames <- list.files(path=topLevelFolder, full.names = TRUE)
 numberOfFolders <- length(listOfFolderNames)
@@ -30,6 +28,8 @@ jerk <- rep(NA, (numberOfFolders))
 interrupted <- rep(NA, (numberOfFolders))
 
 xlFiles_processed <- c()
+
+motor_expected_columns <- c("action", "butterfly_x", "butterfly_x_dp", "butterfly_y", "butterfly_y_dp", "device_x", "device_y", "device_z", "time", "touch_pressure", "touch_size", "touch_x", "touch_x_dp", "touch_y", "touch_y_dp", "image", "fileId")
 
 # Function to parse the excel file
 parse_excel <- function(filepath, sheetname) {
@@ -67,7 +67,6 @@ parse_excel <- function(filepath, sheetname) {
   data_block <- data_block[rowSums(is.na(data_block)) != ncol(data_block), ]
   ## Parsing the sub attempts now from the data block
   split_rows <- which(str_detect(data_block$...1, "Sub-attempt"))
-  
   # If no "Sub-attempt" rows are found
   if(length(split_rows) == 0) {
     colnames(data_block) <- unlist(data_block[1, ])
@@ -79,12 +78,12 @@ parse_excel <- function(filepath, sheetname) {
     # Extract dataframes into a list
     sub_attempt_data <- map(1:(length(split_rows) - 1), function(i) {
       attempt_data <- data_block[(split_rows[i] + 1):(split_rows[i+1] - 1), ]
-      colnames(attempt_data) <- unlist(attempt_data[1, ])
-      attempt_data <- attempt_data[-1, ]
+      colnames(attempt_data) <- motor_expected_columns
+      
+      attempt_data <- attempt_data[-nrow(attempt_data), ]
       return(attempt_data)
     })
   }
-  
   return(list(metadata = metadata_list, data_block = data_block, sub_attempt_data = sub_attempt_data))
 }
 
@@ -126,38 +125,6 @@ parse_last_attempt_sheet <- function(filepath) {
   return(setNames(last_attempt_data, last_attempt_sheets))
 }
 
-parse_last_uninterrupted_sheet <- function(filepath){
-  # Get all sheet names
-  sheet_names <- excel_sheets(filepath)
-  
-  # Extract attempt numbers from the sheet names
-  attempt_numbers <- str_extract(sheet_names, "(?<=Attempt #)\\d+") %>% as.numeric()
-  
-  # Order the sheet names by the extracted attempt numbers in descending order
-  ordered_sheet_names <- sheet_names[order(attempt_numbers, decreasing = TRUE)]
-  
-  # Iterate through ordered sheets to find the sheet with 'interrupted=0'
-  target_sheet <- NULL
-  for(sheet in ordered_sheet_names) {
-    metadata <- parse_excel(filepath, sheet)$metadata
-    
-    # Check if 'interrupted' key exists in the metadata and is equal to '0'
-    if(!is.null(metadata$interrupted) && metadata$interrupted == "0") {
-      target_sheet <- sheet
-      break
-    }
-  }
-  
-  # If no such sheet exists, use the sheet with the highest attempt number (which will be the first in our ordered list)
-  if(is.null(target_sheet)) {
-    target_sheet <- ordered_sheet_names[1]
-  }
-  
-  data <- parse_excel(filepath, target_sheet)
-  
-  return(setNames(list(data), target_sheet))
-}
-
 process_motor_task <- function(filepath){
   rmse <- NA
   weighted_x_freq_gain <- NA
@@ -167,15 +134,13 @@ process_motor_task <- function(filepath){
   jerk <- NA
   interrupted <- NA
   
-  #last_attempt_data <- parse_last_attempt_sheet(filepath)[[1]]
-  
-  last_attempt_data <- parse_last_uninterrupted_sheet(filepath)[[1]]
-  
+  last_attempt_data <- parse_last_attempt_sheet(filepath)[[1]]
+  #print(last_attempt_data)
   metadata <- last_attempt_data$metadata
   data <- last_attempt_data$sub_attempt_data
   sub_attempts <- length(data)
   
-  interrupted <- metadata$interrupted
+  interrupted <- metadata$Interrupted
   
   rmse_subattempt <- rep(NA, sub_attempts)
   weighted_x_freq_gain_subattempt <- rep(NA, sub_attempts)
@@ -186,6 +151,7 @@ process_motor_task <- function(filepath){
 
   for(attempt_index in 1:sub_attempts){
     attempt_data <- data[[attempt_index]]
+    
     first_touch_index <- which(attempt_data$touch_pressure != 0)[1]
     attempt_data <- attempt_data[first_touch_index:nrow(attempt_data), ]
     
@@ -201,10 +167,10 @@ process_motor_task <- function(filepath){
     } else{
       # Average the data over unique timestamps
       averaged_data <- attempt_data %>%
-        select(time, touch_x, touch_y, bee_x, bee_y, time) %>%
+        select(time, touch_x, touch_y, butterfly_x, butterfly_y, time) %>%
         mutate(across(everything(), as.numeric)) %>%
         group_by(time) %>%
-        summarise(touch_x = mean(touch_x), touch_y = mean(touch_y), bee_x = mean(bee_x), bee_y = mean(bee_y))
+        summarise(touch_x = mean(touch_x), touch_y = mean(touch_y), butterfly_x = mean(butterfly_x), butterfly_y = mean(butterfly_y))
       
       # Set the time from t=0
       averaged_data$time <- averaged_data$time - averaged_data$time[1]
@@ -216,34 +182,34 @@ process_motor_task <- function(filepath){
       interpolated_touch_x <- c(scale(approx(averaged_data$time, averaged_data$touch_x, xout = interpolated_time)$y, scale = FALSE))
       interpolated_touch_y <- c(scale(approx(averaged_data$time, averaged_data$touch_y, xout = interpolated_time)$y, scale = FALSE))
       
-      interpolated_bee_x <- c(scale(approx(averaged_data$time, averaged_data$bee_x, xout = interpolated_time)$y, scale = FALSE))
-      interpolated_bee_y <- c(scale(approx(averaged_data$time, averaged_data$bee_y, xout = interpolated_time)$y, scale = FALSE))
+      interpolated_butterfly_x <- c(scale(approx(averaged_data$time, averaged_data$butterfly_x, xout = interpolated_time)$y, scale = FALSE))
+      interpolated_butterfly_y <- c(scale(approx(averaged_data$time, averaged_data$butterfly_y, xout = interpolated_time)$y, scale = FALSE))
       
       fft_touch_x <- fft(interpolated_touch_x)
       fft_touch_y <- fft(interpolated_touch_y)
-      fft_bee_x <- fft(interpolated_bee_x)
-      fft_bee_y <- fft(interpolated_bee_y)
+      fft_butterfly_x <- fft(interpolated_butterfly_x)
+      fft_butterfly_y <- fft(interpolated_butterfly_y)
       
       # Consider only one half of the FFT spectrum
       num_samples <- length(interpolated_time)
       
       abs_fft_touch_x <- abs(fft_touch_x/num_samples)[1:ceiling(num_samples/2)]
       abs_fft_touch_y <- abs(fft_touch_y/num_samples)[1:ceiling(num_samples/2)]
-      abs_fft_bee_x <- abs(fft_bee_x/num_samples)[1:ceiling(num_samples/2)]
-      abs_fft_bee_y <- abs(fft_bee_y/num_samples)[1:ceiling(num_samples/2)]
+      abs_fft_butterfly_x <- abs(fft_butterfly_x/num_samples)[1:ceiling(num_samples/2)]
+      abs_fft_butterfly_y <- abs(fft_butterfly_y/num_samples)[1:ceiling(num_samples/2)]
       
       abs_fft_touch_x <- 2 * abs_fft_touch_x[2:(length(abs_fft_touch_x)-1)]
       abs_fft_touch_y <- 2 * abs_fft_touch_y[2:(length(abs_fft_touch_y)-1)]
-      abs_fft_bee_x <- 2 * abs_fft_bee_x[2:(length(abs_fft_bee_x)-1)]
-      abs_fft_bee_y <- 2 * abs_fft_bee_y[2:(length(abs_fft_bee_y)-1)]
+      abs_fft_butterfly_x <- 2 * abs_fft_butterfly_x[2:(length(abs_fft_butterfly_x)-1)]
+      abs_fft_butterfly_y <- 2 * abs_fft_butterfly_y[2:(length(abs_fft_butterfly_y)-1)]
       
       ########################################################################
       # Using rollapply to compute the moving average
       avg_amp_touch_x <- rollapply(abs_fft_touch_x, width = 3, FUN = mean, align = "center", partial = TRUE)
       avg_amp_touch_y <- rollapply(abs_fft_touch_y, width = 3, FUN = mean, align = "center", partial = TRUE)
       
-      x_freq_gain_vector <- avg_amp_touch_x/abs_fft_bee_x
-      y_freq_gain_vector <- avg_amp_touch_y/abs_fft_bee_y
+      x_freq_gain_vector <- avg_amp_touch_x/abs_fft_butterfly_x
+      y_freq_gain_vector <- avg_amp_touch_y/abs_fft_butterfly_y
       
       x_freq_gain_final <- mean(x_freq_gain_vector)
       y_freq_gain_final <- mean(y_freq_gain_vector)
@@ -254,11 +220,11 @@ process_motor_task <- function(filepath){
       # Combine data into a single data frame
       combined_data <- averaged_data %>%
         filter(touch_x != 0) %>% 
-        select(touch_x, touch_y, bee_x, bee_y)
+        select(touch_x, touch_y, butterfly_x, butterfly_y)
       
       # Calculate the difference between the actual and estimated values
-      difference <- c(combined_data$bee_x - combined_data$touch_x, 
-                      combined_data$bee_y - combined_data$touch_y)
+      difference <- c(combined_data$butterfly_x - combined_data$touch_x, 
+                      combined_data$butterfly_y - combined_data$touch_y)
       
       # Calculate RMSE
       rmse <- sqrt(mean(difference^2))
@@ -294,7 +260,7 @@ process_motor_task <- function(filepath){
 for (num_folder in 1:numberOfFolders) {
   tryCatch({
     thisFolder <- listOfFolderNames[num_folder]
-    child_ids[num_folder] <- as.numeric(gsub("^.*child_(\\d+).*", "\\1", thisFolder))
+    child_ids[num_folder] <- str_extract(thisFolder, "(?<=child_id_).+")
     xlFileNames <- list.files(path = thisFolder, pattern="motor.*\\.xlsx$", full.names=TRUE)
     xlFiles_processed <- c(xlFiles_processed, xlFileNames)
     

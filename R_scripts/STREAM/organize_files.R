@@ -3,7 +3,7 @@ library(stringr)
 # Function to extract child ID
 extract_child_id <- function(file_name) {
   # Using regex to match the pattern child_id_[COUNTRY CODE]-[CHILD ID]-[COMPONENT]
-  pattern <- "^child_id_([A-Z]{2}-\\d{4}-BL)"
+  pattern <- "^child_id_([A-Z]{2}-\\d{4}-[A-Z]{2})"
   str_match(file_name, pattern)[,2]
 }
 

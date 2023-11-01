@@ -10,12 +10,9 @@ toinstall <- packagelist[which(!packagelist %in% (.packages()))]
 invisible(lapply(toinstall,library,character.only=T))
 rm(list=ls())
 
-# Create directory to save all processed files
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
-source("organize_files.R")
-
-topLevelFolder <- "/home/ananyapam/Projects/STREAM/data/STREAM_sample_data"
+topLevelFolder <- "/home/ananyapam/Projects/STREAM-scripts/data/STREAM_sample_data"
 
 listOfFolderNames <- list.files(path=topLevelFolder, full.names = TRUE)
 numberOfFolders <- length(listOfFolderNames)
@@ -108,38 +105,6 @@ parse_last_attempt_sheet <- function(filepath) {
   return(setNames(last_attempt_data, last_attempt_sheets))
 }
 
-parse_last_uninterrupted_sheet <- function(filepath){
-  # Get all sheet names
-  sheet_names <- excel_sheets(filepath)
-  
-  # Extract attempt numbers from the sheet names
-  attempt_numbers <- str_extract(sheet_names, "(?<=Attempt #)\\d+") %>% as.numeric()
-  
-  # Order the sheet names by the extracted attempt numbers in descending order
-  ordered_sheet_names <- sheet_names[order(attempt_numbers, decreasing = TRUE)]
-  
-  # Iterate through ordered sheets to find the sheet with 'interrupted=0'
-  target_sheet <- NULL
-  for(sheet in ordered_sheet_names) {
-    metadata <- parse_excel(filepath, sheet)$metadata
-    
-    # Check if 'interrupted' key exists in the metadata and is equal to '0'
-    if(!is.null(metadata$interrupted) && metadata$interrupted == "0") {
-      target_sheet <- sheet
-      break
-    }
-  }
-  
-  # If no such sheet exists, use the sheet with the highest attempt number (which will be the first in our ordered list)
-  if(is.null(target_sheet)) {
-    target_sheet <- ordered_sheet_names[1]
-  }
-  
-  data <- parse_excel(filepath, target_sheet)
-  
-  return(setNames(list(data), target_sheet))
-}
-
 process_button_task <- function(filepath){
   social <- NA
   non_social <- NA
@@ -147,17 +112,16 @@ process_button_task <- function(filepath){
   soc_pref <- NA
   interrupted <- NA
 
-  #last_attempt_data <- parse_last_attempt_sheet(filepath)[[1]]
-  last_attempt_data <- parse_last_uninterrupted_sheet(filepath)[[1]]
+  last_attempt_data <- parse_last_attempt_sheet(filepath)[[1]]
   
   metadata <- last_attempt_data$metadata
   data <- last_attempt_data$sub_attempt_data
   sub_attempts <- length(data)
   
-  green_clicks <- as.numeric(metadata$greenClickCount)
-  red_clicks <- as.numeric(metadata$redClickCount)
+  green_clicks <- as.numeric(metadata$`Green click count`)
+  red_clicks <- as.numeric(metadata$`Red click count`)
   trials <- green_clicks + red_clicks
-  interrupted <- metadata$interrupted
+  interrupted <- metadata$Interrupted
 
   if(trials >= 1){
     # Extract the last sub-attempt
@@ -170,7 +134,7 @@ process_button_task <- function(filepath){
     button_pressed <- first_valid$button
     video_info <- first_valid$video_name
     
-    if (button_pressed == "Red") {
+    if (button_pressed == "red") {
       if (str_detect(video_info, "non")) {
         non_social <- red_clicks
         social <- green_clicks
@@ -178,7 +142,7 @@ process_button_task <- function(filepath){
         non_social <- green_clicks
         social <- red_clicks
       }
-    } else if (button_pressed == "Green") {
+    } else if (button_pressed == "green") {
       if (str_detect(video_info, "non")) {
         non_social <- green_clicks
         social <- red_clicks
@@ -199,8 +163,8 @@ process_button_task <- function(filepath){
 for (num_folder in 1:numberOfFolders) {
   tryCatch({
     thisFolder <- listOfFolderNames[num_folder]
-    xlFileNames <- list.files(path = thisFolder, pattern="choose_touch.*\\.xlsx$", full.names=TRUE)
-    child_ids[num_folder] <- as.numeric(gsub("^.*child_(\\d+).*", "\\1", thisFolder))
+    xlFileNames <- list.files(path = thisFolder, pattern="button.*\\.xlsx$", full.names=TRUE)
+    child_ids[num_folder] <- str_extract(thisFolder, "(?<=child_id_).+")
     xlFiles_processed <- c(xlFiles_processed, xlFileNames)
     
     if (length(xlFileNames) > 0) {
@@ -213,7 +177,7 @@ for (num_folder in 1:numberOfFolders) {
       interrupted[num_folder] <- button_results[5]
     }
     else{
-      warning(paste0("No choose_touch sheets found in ", thisFolder))
+      warning(paste0("No button sheets found in ", thisFolder))
     }
   }, error = function(e) {
     message(paste0("Error in folder ", num_folder, ": ", e))

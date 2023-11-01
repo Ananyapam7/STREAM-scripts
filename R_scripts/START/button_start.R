@@ -3,7 +3,7 @@
 rm(list=ls())
 
 # Check which packages are installed, install the missing ones, and activate all
-packagelist <- c('readxl', 'purrr', 'stringr', 'jsonlite', 'rjson')
+packagelist <- c('readxl', 'purrr', 'stringr')
 missingpackages <- packagelist[!packagelist %in% installed.packages()[,1]]
 if (length(missingpackages)>0){install.packages(missingpackages)}
 toinstall <- packagelist[which(!packagelist %in% (.packages()))]
@@ -12,8 +12,6 @@ rm(list=ls())
 
 # Create directory to save all processed files
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
-dir.create(file.path(getwd(), "ButtonTask/Datasets-processed/"), showWarnings = FALSE, recursive = T)
-dir.create(file.path(getwd(), "ButtonTask/Processed/"), showWarnings = FALSE, recursive = T)
 
 topLevelFolder <- "/home/ananyapam/Projects/STREAM-scripts/data/START_sample_data"
 
@@ -221,8 +219,6 @@ for (num_folder in 1:numberOfFolders) {
     message(paste0("Warning in folder ", num_folder, ": ", w))
   })
 }
-
-file.copy(from = xlFiles_processed, to = file.path(getwd(), "ButtonTask/Datasets-processed/", basename(xlFiles_processed)))
 
 button_task_data <- data.frame(
   child_ids,

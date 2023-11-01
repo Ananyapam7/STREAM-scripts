@@ -10,12 +10,9 @@ toinstall <- packagelist[which(!packagelist %in% (.packages()))]
 invisible(lapply(toinstall,library,character.only=T))
 rm(list=ls())
 
-# Create directory to save all processed files
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
-source("organize_files.R")
-
-topLevelFolder <- "/home/ananyapam/Projects/STREAM/data/STREAM_sample_data"
+topLevelFolder <- "/home/ananyapam/Projects/STREAM-scripts/data/STREAM_sample_data"
 
 listOfFolderNames <- list.files(path=topLevelFolder, full.names = TRUE)
 numberOfFolders <- length(listOfFolderNames)
@@ -87,56 +84,36 @@ parse_excel <- function(filepath, sheetname) {
   return(list(metadata = metadata_list, data_block = data_block, sub_attempt_data = sub_attempt_data))
 }
 
-parse_last_uninterrupted_sheet <- function(filepath){
+# Function to extract data from sheets representing the last attempt
+parse_last_attempt_sheet <- function(filepath) {
   # Get all sheet names
   sheet_names <- excel_sheets(filepath)
   
   # Extract attempt numbers from the sheet names
   attempt_numbers <- str_extract(sheet_names, "(?<=Attempt #)\\d+") %>% as.numeric()
   
-  # Order the sheet names by the extracted attempt numbers in descending order
-  ordered_sheet_names <- sheet_names[order(attempt_numbers, decreasing = TRUE)]
+  # Identify the maximum attempt number
+  max_attempt <- max(attempt_numbers, na.rm = TRUE)
   
-  # Iterate through ordered sheets to find the sheet with 'interrupted=0'
-  target_sheet <- NULL
-  for(sheet in ordered_sheet_names) {
-    metadata <- parse_excel(filepath, sheet)$metadata
-    
-    # Check if 'interrupted' key exists in the metadata and is equal to '0'
-    if(!is.null(metadata$interrupted) && metadata$interrupted == "0") {
-      target_sheet <- sheet
-      break
-    }
-  }
+  # Filter sheet names that match the maximum attempt number
+  last_attempt_sheets <- sheet_names[attempt_numbers == max_attempt]
   
-  # If no such sheet exists, use the sheet with the highest attempt number (which will be the first in our ordered list)
-  if(is.null(target_sheet)) {
-    target_sheet <- ordered_sheet_names[1]
-  }
+  # Extract data only from these sheets using the parse_excel function
+  last_attempt_data <- map(last_attempt_sheets, ~parse_excel(filepath, .x))
   
-  data <- parse_excel(filepath, target_sheet)
-  
-  return(setNames(list(data), target_sheet))
+  # Return the data as a named list where names are the last attempt sheet names
+  return(setNames(last_attempt_data, last_attempt_sheets))
 }
 
 compute_time_diff <- function(endTime, startTime) {
   
-  # Splitting date-time and milliseconds
-  end_time_parts <- strsplit(endTime, " ")[[1]]
-  start_time_parts <- strsplit(startTime, " ")[[1]]
-  
-  # Parsing date-time
-  end_datetime <- dmy_hms(paste(end_time_parts[1:2], collapse = " "))
-  start_datetime <- dmy_hms(paste(start_time_parts[1:2], collapse = " "))
-  
-  # Computing the difference in milli-seconds
-  time_diff_ms <- as.numeric(difftime(end_datetime, start_datetime, units = "secs"))*1000
-  
-  # Adjusting for milliseconds difference
-  ms_diff <- as.numeric(end_time_parts[3]) - as.numeric(start_time_parts[3])
-  total_diff_secs <- time_diff_ms + ms_diff
-  
-  return(total_diff_secs/1000)
+  # Provided times
+  start_time <- as.POSIXct(startTime, format="%d/%m/%Y %H:%M:%OS")
+  end_time <- as.POSIXct(endTime, format="%d/%m/%Y %H:%M:%OS")
+  # Calculate time difference
+  time_difference <- difftime(end_time, start_time, units="secs")
+  # Print result
+  return (time_difference)
 }
 
 process_bubble_task <- function(filepath){
@@ -147,12 +124,12 @@ process_bubble_task <- function(filepath){
   interrupted <- NA
   bubblesPopped <- NA
   
-  last_attempt_data <- parse_last_uninterrupted_sheet(filepath)[[1]]
+  last_attempt_data <- parse_last_attempt_sheet(filepath)[[1]]
   
   metadata <- last_attempt_data$metadata
   data <- last_attempt_data$sub_attempt_data
   sub_attempts <- length(data)
-  interrupted <- metadata$interrupted
+  interrupted <- metadata$Interrupted
   bubblesPopped <- as.numeric(metadata$bubblesPopped)
   
   if(bubblesPopped >= 1){
@@ -177,7 +154,7 @@ process_bubble_task <- function(filepath){
     mean_pressure <- mean(as.numeric(attempt_data$touch_pressure), na.rm = TRUE)
     
     # Add the time taken
-    time_taken <- compute_time_diff(metadata$endTime, metadata$startTime)
+    time_taken <- compute_time_diff(metadata$`End time`, metadata$`Start time`)
   }
   
   return(c(mean_pressure,
@@ -191,7 +168,7 @@ process_bubble_task <- function(filepath){
 for (num_folder in 1:numberOfFolders) {
   tryCatch({
     thisFolder <- listOfFolderNames[num_folder]
-    child_ids[num_folder] <- as.numeric(gsub("^.*child_(\\d+).*", "\\1", thisFolder))
+    child_ids[num_folder] <- str_extract(thisFolder, "(?<=child_id_).+")
     xlFileNames <- list.files(path = thisFolder, pattern="bubble.*\\.xlsx$", full.names=TRUE)
     xlFiles_processed <- c(xlFiles_processed, xlFileNames)
     
