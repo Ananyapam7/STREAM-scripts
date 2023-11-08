@@ -156,14 +156,13 @@ process_motor_task <- function(filepath){
     attempt_data <- attempt_data[first_touch_index:nrow(attempt_data), ]
     
     if ((sum(attempt_data$touch_x != 0) < 5) || (sum(attempt_data$touch_y != 0) < 5)) {
-      warning("Very few touch points\n")
+      print("Very few touch points\n")
       rmse <- NA
       weighted_x_freq_gain <- NA
       weighted_y_freq_gain <- NA
       speed <- NA
       acceleration <- NA
       jerk <- NA
-      interrupted <- NA
     } else{
       # Average the data over unique timestamps
       averaged_data <- attempt_data %>%
@@ -225,13 +224,15 @@ process_motor_task <- function(filepath){
       # Calculate the difference between the actual and estimated values
       difference <- c(combined_data$butterfly_x - combined_data$touch_x, 
                       combined_data$butterfly_y - combined_data$touch_y)
-      
+     
+      print(difference)
+       
       # Calculate RMSE
-      rmse <- sqrt(mean(difference^2))
+      rmse <- sqrt(mean(difference^2, na.rm = TRUE))
       grads <- gradients(averaged_data$touch_x, averaged_data$touch_y, averaged_data$time)
-      speed <- mean(grads$grad1)
-      acceleration <- mean(grads$grad2)
-      jerk <- mean(grads$grad3)
+      speed <- mean(grads$grad1, na.rm = TRUE)
+      acceleration <- mean(grads$grad2, na.rm = TRUE)
+      jerk <- mean(grads$grad3, na.rm = TRUE)
     }
     rmse_subattempt[attempt_index] <- rmse
     weighted_x_freq_gain_subattempt[attempt_index] <- weighted_x_freq_gain
@@ -241,12 +242,12 @@ process_motor_task <- function(filepath){
     jerk_subattempt[attempt_index] <- jerk
   }
   
-  rmse <- mean(rmse_subattempt)
-  weighted_x_freq_gain <- mean(weighted_x_freq_gain_subattempt)
-  weighted_y_freq_gain <- mean(weighted_y_freq_gain_subattempt)
-  speed <- mean(speed_subattempt)
-  acceleration <- mean(acceleration_subattempt)
-  jerk <- mean(jerk_subattempt)
+  rmse <- mean(rmse_subattempt, na.rm = TRUE)
+  weighted_x_freq_gain <- mean(weighted_x_freq_gain_subattempt, na.rm = TRUE)
+  weighted_y_freq_gain <- mean(weighted_y_freq_gain_subattempt, na.rm = TRUE)
+  speed <- mean(speed_subattempt, na.rm = TRUE)
+  acceleration <- mean(acceleration_subattempt, na.rm = TRUE)
+  jerk <- mean(jerk_subattempt, na.rm = TRUE)
   
   return(c(rmse,
            weighted_x_freq_gain,
