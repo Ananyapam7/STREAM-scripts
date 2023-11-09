@@ -151,8 +151,20 @@ process_motor_task <- function(filepath){
 
   for(attempt_index in 1:sub_attempts){
     attempt_data <- data[[attempt_index]]
-    
+    print(attempt_data)
+    View(attempt_data)
     first_touch_index <- which(attempt_data$touch_pressure != 0)[1]
+    
+    if(is.na(first_touch_index)){
+      rmse_subattempt[attempt_index] <- NA
+      weighted_x_freq_gain_subattempt[attempt_index] <- NA
+      weighted_y_freq_gain_subattempt[attempt_index] <- NA
+      speed_subattempt[attempt_index] <- NA
+      acceleration_subattempt[attempt_index] <- NA
+      jerk_subattempt[attempt_index] <- NA
+      next # Skip over to the next iteration
+    }
+    
     attempt_data <- attempt_data[first_touch_index:nrow(attempt_data), ]
     
     if ((sum(attempt_data$touch_x != 0) < 5) || (sum(attempt_data$touch_y != 0) < 5)) {
@@ -264,6 +276,12 @@ for (num_folder in 1:numberOfFolders) {
     child_ids[num_folder] <- str_extract(thisFolder, "(?<=child_id_).+")
     xlFileNames <- list.files(path = thisFolder, pattern="motor.*\\.xlsx$", full.names=TRUE)
     xlFiles_processed <- c(xlFiles_processed, xlFileNames)
+    
+    #select only last attempt (attempts are stored in different files, not sheets)
+    # Fix by Elin
+    if (length(xlFileNames) > 1) {
+      xlFileNames <- xlFileNames[length(xlFileNames)]
+    }
     
     if (length(xlFileNames) > 0) {
       print(sprintf('Processing file %s',num_folder))
